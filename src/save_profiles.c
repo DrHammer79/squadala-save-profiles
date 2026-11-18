@@ -19,7 +19,12 @@
    - Two games on one save folder (Nucleus Coop's instances): moves are serialized by a named mutex on the folder's real
      path, and a file that another running game plays from cannot be swapped out from under it.
    - If the game stops drawing while its save thread is paused (it waits for its saves), the thread is let go after a
-     few seconds and the game plays the file that is there: never a hang. */
+     few seconds and the game plays the file that is there: never a hang.
+   - With co-op's mod interface 2 (the game's menu screens), a pick goes on as the game's own Continue: the title's
+     Continue is chosen for the player and the game's list of that file's saves opens. B on that list comes back to this
+     file select, over the title: a pick there moves the files, the game reads its save list again, and the new file's
+     list opens. While the file select is up over the title, the game gets no input. With interface 1 the title stays
+     the player's, as before. */
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0A00
 #endif
@@ -37,7 +42,7 @@
 #include "coop_mod_api.h"
 
 #define FILES 7
-#define MOD_VERSION "1.0.0"
+#define MOD_VERSION "1.1.0"
 #define SAVE_THREAD L"gmd::SaveDataMgr"
 #define STATE_FILE "profiles.txt"
 #define BACKUP_DIR "profiles-backup"
@@ -69,6 +74,20 @@ static char toast[96];
 static volatile DWORD toast_until;
 static int test_pick;               /* SAVE_PROFILES_TEST_PICK=<file>[,<ms>]: a test run picks by itself */
 static DWORD test_pick_ms = 3000, picking_since;
+
+/* (mod interface 2) The game's own load list after a pick, and B on it back to the file select */
+#define CONTINUE_BUTTON "Pa_Button_00"   /* the title's Continue (its first button, seen in a game) */
+#define LIST_TRY_MS 20000   /* a pick's list not opened this long after the title takes input: the title is the player's */
+#define HOLD_AFTER_MS 3000  /* the game's input stays held this long at most at the title, while a pick's list opens */
+static int v2;                       /* the module serves interface 2 */
+static int debug_screens;            /* SAVE_PROFILES_DEBUG=1: the screens the mod sees, in the log */
+static volatile LONG title_pick;     /* the file select is up over the title (B on the load list) */
+static volatile LONG want_list;      /* a file was picked: open its load list at the title */
+static volatile LONG need_reload;    /* the files moved at the title: the game reads its save list first */
+static volatile DWORD title_since;   /* when the title first took input after a pick (0: not yet; the game may load for
+                                        longer than LIST_TRY_MS after a pick at the start) */
+static volatile DWORD list_ms, question_ms;   /* the load list's and its question's last updates (0: none yet) */
+static volatile LONG reprime;        /* the next frame's buttons are the base (none counts as pressed) */
 
 typedef struct {
     int used;
@@ -631,6 +650,7 @@ static void choose(int n) {
     recover();
     State s = read_state();
     active = s.active;   /* (another game window may have switched meanwhile) */
+    const int previous = active;
     if (n != active) {
         const DWORD other = other_live();
         if (other) {
@@ -647,8 +667,17 @@ static void choose(int n) {
         else show(8000, "Could not switch to File %d (see the log). File %d is loaded.", n, active);
     }
     folder_unlock(m);
+    const int moved = n == active && n != previous;
     state = ST_DONE;
-    release_save_thread(n == active ? "the chosen file is in the save folder" : "the switch failed, the file there stays");
+    if (title_pick) {   /* (over the title: the game reads its list again when the files moved) */
+        title_pick = 0;
+        need_reload = moved;
+        say("file %d chosen over the title%s", active, moved ? ": the game reads its save list again" : "");
+    } else {
+        release_save_thread(n == active ? "the chosen file is in the save folder" : "the switch failed, the file there stays");
+    }
+    title_since = 0;
+    want_list = v2 && info[active].used;   /* (an empty file: the title's New Game is the player's) */
     if (names[active][0]) snprintf(toast, sizeof toast, "File %d: %s", active, names[active]);
     else snprintf(toast, sizeof toast, "File %d", active);
     toast_until = GetTickCount() + 4000;
@@ -926,6 +955,7 @@ static void frame(void *user) {
     if (state != ST_PICKING) return;
     const DWORD now = GetTickCount();
     const uint64_t b = read_pads();
+    if (InterlockedExchange(&reprime, 0)) primed = 0;   /* (the B that closed the load list does not count here) */
     if (!primed) prev = b, primed = 1;   /* (a button already held when the file select came up does not count) */
     const uint64_t pressed = b & ~prev;
     LONG a = InterlockedExchange(&key_actions, 0);
@@ -955,6 +985,101 @@ static void frame(void *user) {
     if (mode == MODE_NAME)
         for (int i = 0; i < qn; i++) q[i] == '\b' ? name_delete() : name_put(q[i]);
     if (a) handle(a);
+}
+
+/* --- the game's menu screens (mod interface 2) ------------------------------------------------------------------- */
+
+/* B on the load list brought the title back: the file select comes up over it */
+static void open_over_title(void) {
+    EnterCriticalSection(&pick_lock);
+    if (state != ST_PICKING) {
+        HANDLE m = folder_lock();
+        recover();
+        active = read_state().active;
+        folder_unlock(m);
+        load_all_info();
+        mode = MODE_MAIN;
+        cursor = active - 1;
+        message[0] = 0;
+        reprime = 1;
+        title_pick = 1;
+        want_list = 0;
+        picking_since = GetTickCount();
+        state = ST_PICKING;
+        say("B on the load list: the file select is up over the title (file %d in the save folder)", active);
+    }
+    LeaveCriticalSection(&pick_lock);
+}
+
+/* The load list just closed with no save loaded, and the title takes input again: B (a pad, a key or the mouse) took
+   the player back. A save loaded from the list always goes through its question (its Yes), and the title does not
+   come back then; the System page's load list has no title behind it. */
+static int back_from_list(DWORD now) {
+    return list_ms && now - list_ms > 150 && now - list_ms < 1500 && (!question_ms || now - question_ms > 1500);
+}
+
+/* Every menu screen's update, on the game's thread (the calls below work only in here) */
+static void on_screen(void *user, const CoopModScreen *sc) {
+    (void)user;
+    const DWORD now = GetTickCount();
+    if (debug_screens) {   /* (SAVE_PROFILES_DEBUG=1: each change of what the screens say, once) */
+        static uint32_t last_kind = 0xffffffffu;
+        static char last_focus[64];
+        static int last_ready = -1;
+        if (sc->kind != last_kind || strcmp(sc->focused, last_focus) || sc->save_list_ready != last_ready) {
+            last_kind = sc->kind, last_ready = sc->save_list_ready;
+            snprintf(last_focus, sizeof last_focus, "%s", sc->focused);
+            say("screen: kind %u, focus '%s', save list %s", sc->kind, sc->focused, sc->save_list_ready ? "read" : "not read");
+        }
+    }
+    if (sc->kind == COOP_MOD_SCREEN_LOAD_QUESTION) {
+        question_ms = now;
+        return;
+    }
+    if (sc->kind == COOP_MOD_SCREEN_LOAD_LIST) {
+        list_ms = now;
+        return;
+    }
+    if (sc->kind != COOP_MOD_SCREEN_TITLE) return;
+    if (state == ST_PICKING) {
+        if (title_pick) api->hold_input(api, 1);   /* (the file select over the title: the title gets nothing) */
+        return;
+    }
+    if (!sc->focused[0]) return;   /* (the title behind another screen, or not taking input yet) */
+    if (back_from_list(now)) {
+        list_ms = 0;
+        open_over_title();
+        api->hold_input(api, 1);
+        return;
+    }
+    if (need_reload) {
+        api->hold_input(api, 1);
+        if (api->reload_save_list(api)) need_reload = 0;
+        return;
+    }
+    if (!want_list) {
+        api->hold_input(api, 0);
+        return;
+    }
+    if (!title_since) title_since = now ? now : 1;
+    api->hold_input(api, now - title_since < HOLD_AFTER_MS);
+    if (!sc->save_list_ready) return;   /* (the game still reads the files' captions) */
+    if (strcmp(sc->focused, CONTINUE_BUTTON) != 0) {
+        want_list = 0;
+        api->hold_input(api, 0);
+        say("the title's focus is on %s, not Continue: the title is yours", sc->focused);
+        return;
+    }
+    if (api->choose_focused(api)) {
+        want_list = 0;
+        api->hold_input(api, 0);
+        say("file %d: the game's load list opens", active);
+    } else if (now - title_since > LIST_TRY_MS) {
+        want_list = 0;
+        api->hold_input(api, 0);
+        say("file %d: the load list did not open in %d s (co-op busy at the title?): the title is yours", active,
+            LIST_TRY_MS / 1000);
+    }
 }
 
 /* --- drawing: the N64 file select's night sky, panel and buttons, from rectangles and text ------------------------ */
@@ -1368,7 +1493,7 @@ static void draw_picker(const CoopModDraw *d) {
                                  : job ? RGBA(120, 248, 255, 255) : 0;
         draw_button(d, bx0, r0, bx1, r1, s, lower[k], at, halo, at ? pulse : 0.1f, 0);
     }
-    draw_footer(d, W, y1 + 26 * s, s, "A - Decide", "B - Cancel",
+    draw_footer(d, W, y1 + 26 * s, s, "A - Decide", title_pick ? "B - Back" : "B - Cancel",
                 "Keyboard: arrows to move, Enter to decide, Esc to cancel, 1-7 to load a file");
 }
 
@@ -1440,6 +1565,7 @@ COOP_MOD_EXPORT int coop_mod_start(const CoopModApi *a) {
             }
         }
     }
+    if (GetEnvironmentVariableA("SAVE_PROFILES_DEBUG", env, sizeof env) && env[0] == '1') debug_screens = 1;
     if (GetEnvironmentVariableA("SAVE_PROFILES_TEST_PICK", env, sizeof env) && env[0]) {
         test_pick = atoi(env);
         const char *c = strchr(env, ',');
@@ -1456,6 +1582,11 @@ COOP_MOD_EXPORT int coop_mod_start(const CoopModApi *a) {
     api->on_frame(api, frame, 0);
     api->on_overlay(api, overlay, 0);
     api->on_key(api, key, 0);
+    v2 = a->version >= 2 && a->size >= offsetof(CoopModApi, hold_input) + sizeof(void *) && a->on_screen &&
+         api->on_screen(api, on_screen, 0);
+    if (!v2)
+        say("this co-op's mod interface is version %u: after a pick the title is yours (version 2 opens the game's load "
+            "list, and B on it comes back here)", a->version);
 
     const char *why = NULL;
     DWORD other = 0;
@@ -1484,4 +1615,5 @@ COOP_MOD_EXPORT int coop_mod_start(const CoopModApi *a) {
 
 COOP_MOD_EXPORT void coop_mod_stop(void) {
     if (state == ST_PICKING && save_thread) ResumeThread(save_thread);
+    if (save_thread) CloseHandle(save_thread), save_thread = NULL;
 }

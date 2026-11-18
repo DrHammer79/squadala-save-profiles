@@ -18,13 +18,17 @@
 
    Versions: COOP_MOD_API_VERSION rises by one when the table grows; old entries never move or change. A mod reads
    `version` and `size` before using a newer entry. mod.json "api" says the version the mod was written for: the
-   loader refuses a mod that wants a newer one than it serves. Plain C, header only. */
+   loader refuses a mod that wants a newer one than it serves. Plain C, header only.
+   - Version 1: the log, memory, settings, frame, overlay, key, setting and hook callbacks.
+   - Version 2: the game's menu screens (on_screen) and three things a mod may do inside that call: choose the focused
+     button, have the game read its save list again, hold the game's input. They are said in the game's own terms
+     (screens, buttons, the save list), never as addresses: the runtime finds the game's functions itself. */
 #ifndef COOP_MOD_API_H
 #define COOP_MOD_API_H
 #include <stddef.h>
 #include <stdint.h>
 
-#define COOP_MOD_API_VERSION 1u
+#define COOP_MOD_API_VERSION 2u
 
 #ifdef _WIN32
 #define COOP_MOD_EXPORT __declspec(dllexport)
@@ -57,6 +61,26 @@ typedef int (*coop_mod_key_fn)(void *user, uint32_t vk, int down, int repeat);
 /* One of the mod's settings (mod.json "settings") changed in the Mods tab: its key and the new value. A setting with
    "restart" is told too; it only counts after a restart. The thread that made the change. */
 typedef void (*coop_mod_setting_fn)(void *user, const char *key, const char *value);
+
+/* (version 2) The game's menu screens, as the runtime names them. A screen the runtime does not name is OTHER. */
+enum {
+    COOP_MOD_SCREEN_OTHER = 0,
+    COOP_MOD_SCREEN_TITLE = 1,          /* the title: Continue, New Game, Options */
+    COOP_MOD_SCREEN_LOAD_LIST = 2,      /* the list of saves to load (the title's Continue, the System page's Load) */
+    COOP_MOD_SCREEN_LOAD_QUESTION = 3   /* its question after a save is picked */
+};
+/* (version 2) One menu screen's update, as on_screen hands it over. Only valid during the call. */
+typedef struct CoopModScreen {
+    uint32_t size;          /* sizeof this struct as the runtime knows it */
+    uint32_t kind;          /* COOP_MOD_SCREEN_* */
+    const char *focused;    /* the focused button's name in the screen's layout ("Pa_Button_00": the title's Continue),
+                               "" when no button is focused or the screen takes no input now */
+    int save_list_ready;    /* 1 when the game's save list is read and no new read is asked or running */
+} CoopModScreen;
+/* (version 2) A menu screen updates: on the game's thread that updates it, before its own update, for every menu screen
+   (the HUD is one too, as OTHER), one at a time across all mods. choose_focused, reload_save_list and hold_input work
+   only inside this call. */
+typedef void (*coop_mod_screen_fn)(void *user, const CoopModScreen *screen);
 
 typedef struct CoopModApi {
     uint32_t size;      /* sizeof this table as the loader knows it */
@@ -94,6 +118,30 @@ typedef struct CoopModApi {
     /* The mod changed something only a new start shows (it wrote game files): the Mods tab says "restart needed" with
        the reason. Any thread. */
     void (*restart_needed)(const struct CoopModApi *self, const char *reason);
+
+    /* ---- Version 2: read `version` >= 2 (or `size`) before using these. ---- */
+
+    /* Registration, only inside coop_mod_start, as the others. */
+    int (*on_screen)(const struct CoopModApi *self, coop_mod_screen_fn fn, void *user);
+
+    /* The three calls below work only inside this mod's own on_screen call, on its thread, for the screen it was handed:
+       anywhere else they do nothing and answer 0 (with a line in the log, once). */
+
+    /* Chooses the screen's focused button the game's own way, as the player's A would (its press, its sound, what it
+       opens). 1 when the game took it; 0 when nothing is focused, the button cannot be chosen now (its opening animation,
+       another choice running: try at a later update), or co-op is busy at the title (hosting, joining, the host's save
+       on its way). */
+    int (*choose_focused)(const struct CoopModApi *self);
+
+    /* Has the game read its save list (the files' captions the title and the load list show) again from the save
+       folder, after the mod changed the files in it. The game reads it at the title's next update; save_list_ready is 0
+       until it is done. 1 when asked. */
+    int (*reload_save_list)(const struct CoopModApi *self);
+
+    /* on = 1: the game gets no buttons and no sticks from the pads (the mod's own screen is in front); on = 0 gives them
+       back. The hold ends by itself when no menu screen has updated for half a second, and when the mod is switched off.
+       1 when done. */
+    int (*hold_input)(const struct CoopModApi *self, int on);
 } CoopModApi;
 
 /* The mod's exports. coop_mod_start: once, when the co-op module starts, before any callback; return 1 to stay on,

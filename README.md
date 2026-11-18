@@ -2,8 +2,9 @@
 
 An N64-style file select with **7 files** for the Longshot game of
 [Squadala!](https://github.com/daurosk/oot-remake-multiplayer), the OoT co-op kit. Each file is its own game: its own
-saves, settings and progress. It shows when the game starts, before the title. Pick a file and the game loads it
-straight away, with no restart.
+saves, settings and progress. It shows when the game starts, before the title. Pick a file and the game opens that
+file's list of saves, as the game's own Continue does. B on that list brings the file select back, so you can switch
+files without a restart.
 
 ![The file select](screenshots/file-select-1080p.png)
 
@@ -22,7 +23,9 @@ mod interface. It is a community mod, not part of the kit.
 To take it out, delete `mods\save-profiles`. The file you played last stays in the save folder, and the game keeps
 using it (see [Building from source](#building-from-source) for getting the other files back).
 
-Tested with kit 0.11.2. Any kit whose co-op module loads code mods (mod interface version 1) should work.
+Any kit whose co-op module loads code mods works (mod interface version 1 or later). The load list after a pick, and
+B on it back to the file select, need mod interface version 2 (co-op 0.11.6 and later). With version 1 the title
+comes up after a pick and the file select only shows when the game starts, as in Save Profiles 1.0.
 
 ## Why updates don't break it
 
@@ -30,8 +33,8 @@ Tested with kit 0.11.2. Any kit whose co-op module loads code mods (mod interfac
   replace the files listed in the kit's `MANIFEST.txt`. The game's `mods` folder is not in it, and a Longshot rebuild
   keeps the game's `mods` and `user` folders.
 - **It only uses what co-op keeps stable for its own features.** It relies on the co-op mod interface
-  (`coop_mod_api.h`, version 1, which only ever grows), co-op's export for the save folder's path, and co-op's
-  controller reading.
+  (`coop_mod_api.h`, versions 1 and 2, which only ever grow), co-op's export for the save folder's path, and co-op's
+  controller reading. It never calls the game's code by address: version 2 names the screens and the button choice.
 - **It degrades instead of breaking.** If a future build drops one of those, the mod logs it and steps aside; the
   game plays its save folder as it always did.
 
@@ -44,7 +47,11 @@ Tested with kit 0.11.2. Any kit whose co-op module loads code mods (mod interfac
 | Cancel | B | Esc |
 | Load a file directly | | 1 to 7 |
 
-- **Pick a file** to play it. **B** keeps the file you played last; the cursor always starts on it.
+- **Pick a file** to play it. The game's list of that file's saves opens (its newest save and its autosaves), as if
+  you had chosen Continue on the title. **B** keeps the file you played last; the cursor always starts on it.
+- **B on the game's save list** brings the file select back, over the title. Pick another file and the game reads
+  that file's saves and opens its list; B in the file select goes back to the list of the file you had.
+- An empty file has no saves to list: the title comes up, and New Game starts it.
 - **A new file:** picking an empty file asks for its name first, as on the N64. "End" with no name loads it
   unnamed.
 - **Copy** asks which file, then where to.
@@ -97,7 +104,8 @@ are no accents or other symbols.
 - Guests keep playing the host's save from `<save folder>-coop` as before. Their own files are never written by a
   session.
 - The file is chosen before co-op notes which folder is "your save", and is never switched mid-game, so the host
-  never shares the wrong file.
+  never shares the wrong file. While co-op is hosting or joining at the title, the mod does not open the save list for
+  you: the title is yours.
 - **Two game windows on one PC** (Nucleus Coop) share one save folder. Moves are locked against each other. Once one
   window is playing a file, the other cannot swap it out: it shows "File N is open in the other game window" and
   offers that file.
@@ -130,6 +138,11 @@ profiles-backup\overwritten-file<N>-<date>\   a file's saves from before a copy 
    as if it were the only one.
 4. If the game stops drawing while it waits for its saves, the mod lets the thread go after 4 seconds. The game
    then plays the file that is there, so it can never hang.
+5. With mod interface version 2 the mod sees the game's menu screens. After a pick it has the game choose the
+   title's Continue (the game's own button choice, not a pressed button), so the game's save list opens.
+6. When that list closes with no save loaded and the title takes input again, B took you back: the file select comes
+   up over the title, and the game gets no input while it shows. A pick there moves the files (the game is idle at
+   the title), has the game read its save list again from the save folder, and opens the new file's list.
 
 The log (`hookshot\game\logs\longshot_log.txt`) has every step on lines starting `coop: mod save-profiles:`.
 
@@ -144,7 +157,8 @@ The log (`hookshot\game\logs\longshot_log.txt`) has every step on lines starting
   - The file you played last stays in the save folder, and the game keeps using it.
   - To get another file back without the mod: close the game, move the contents of the save folder into an empty
     `perfil<N>`, then move the contents of the `perfil<N>` you want up into the save folder.
-- `src\coop_mod_api.h` is a copy of the co-op project's `hookshot/src/coop_mod_api.h` (version 1, unchanged).
+- `src\coop_mod_api.h` is a copy of the co-op project's `hookshot/src/coop_mod_api.h` (version 2, unchanged). The
+  mod reads the version at its start and uses version 2's entries only when the co-op it runs on has them.
 
 ## The letters
 

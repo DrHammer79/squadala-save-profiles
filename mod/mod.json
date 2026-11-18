@@ -1,9 +1,9 @@
 {
   "id": "save-profiles",
   "name": "Save Profiles",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "After juvxncio's zelda-oot-perfis (GPL-3.0-or-later)",
-  "description": "An N64-style file select with 7 files when the game starts. Each file is its own game: its own saves, settings and progress. In co-op the host shares the file it picked; guests play the host's save as before.",
+  "description": "An N64-style file select with 7 files when the game starts; a pick opens that file's save list, and B on it comes back. Each file is its own game: its own saves, settings and progress. In co-op the host shares the file it picked; guests play the host's save as before.",
   "coop": "own",
   "api": 1,
   "code": "save_profiles.dll",
