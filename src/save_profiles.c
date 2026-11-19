@@ -100,6 +100,8 @@ static volatile DWORD title_since;   /* when the title first took input after a 
                                         longer than LIST_TRY_MS after a pick at the start) */
 static volatile DWORD list_ms, question_ms;   /* the load list's and its question's last updates (0: none yet) */
 static volatile DWORD list_asked;
+static volatile DWORD handoff_ms;   /* a file picked over the title, its save list not shown yet: the file select stays (0: no) */
+#define HANDOFF_MAX_MS 3000         /* the file select stays this long at most for the game's save list */
 /* The game's own menu sounds for the file select (mod interface 2's play_sound): asked on the frame's thread, started
    at the title's next update (the calls work only there) */
 #define SND_CURSOR 1
@@ -733,6 +735,7 @@ static void choose(int n) {
     }
     folder_unlock(m);
     const int moved = n == active && n != previous;
+    const int over_title = title_pick;
     state = ST_DONE;
     if (title_pick) {   /* (over the title: the game reads its list again when the files moved) */
         title_pick = 0;
@@ -744,6 +747,8 @@ static void choose(int n) {
     }
     title_since = 0;
     want_list = v2 && info[active].used;   /* (an empty file: the title's New Game is the player's) */
+    /* (the file select stays drawn over the title until the game's save list shows, so the title never flashes between) */
+    handoff_ms = over_title && want_list ? (GetTickCount() ? GetTickCount() : 1) : 0;
     if (names[active][0]) snprintf(toast, sizeof toast, "File %d: %s", active, names[active]);
     else snprintf(toast, sizeof toast, "File %d", active);
     toast_until = GetTickCount() + 4000;
@@ -2040,7 +2045,13 @@ static void overlay(void *user, const CoopModDraw *d) {
     static int was_picking;
     static DWORD shown_since, hidden_since;
     const DWORD now = GetTickCount();
-    const int picking = state == ST_PICKING;
+    /* (after a pick over the title, still drawn until the game's save list shows: it then fades out over that list, and
+       the title, which the game shows a moment while Continue opens it, never shows between) */
+    const DWORD hand = handoff_ms;
+    const int list_seen = hand && list_ms && (LONG)(list_ms - hand) >= 0;
+    const int holding = state != ST_PICKING && hand && !list_seen && now - hand < HANDOFF_MAX_MS;
+    if (hand && !holding) handoff_ms = 0;
+    const int picking = state == ST_PICKING || holding;
     if (picking && !was_picking) shown_since = now;
     if (!picking && was_picking) hidden_since = now ? now : 1;
     was_picking = picking;
