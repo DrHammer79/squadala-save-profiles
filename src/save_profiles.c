@@ -1686,11 +1686,14 @@ static void draw_sky(const CoopModDraw *d, float t) {
     }
 }
 
-/* The N64 panel: a blue window with its top left corner cut, lighter low down, nearly solid over the files (the night
-   sky's stars just show through it, as on the N64) and fading out to the right over its last third. Its inner window (fx, fy: under the title, behind the buttons and plates) is a deeper
+/* The N64 panel: a blue window with its top left corner cut, lighter low down, see-through over the files (the night
+   sky's stars faint behind them) and fading out to the right over its last third. Its inner window (fx, fy: under the title, behind the buttons and plates) is a deeper
    blue. Drawn in columns that meet edge to edge (never overlapping, or seams show); fine ones along the cut corner. */
 #define PANEL_BANDS 12
-#define PANEL_ALPHA 205   /* (of 255: 250 hid the stars, the first look's lighter one showed too many) */
+/* (of 255: 250 hid the stars; 205, with the inner window's 140 over it, still let only about a tenth through where the
+   files are. 150 and the inner window's 60 let about a third through there, the stars faint behind the files) */
+#define PANEL_ALPHA 150
+#define INNER_ALPHA 60
 static void draw_panel(const CoopModDraw *d, float x0, float y0, float x1, float y1, float s, float fx, float fy, float fy1) {
     const float cut = 46 * s, rim = 4 * s, solid = 0.62f;
     for (float x = x0, next; x < x1; x = next) {
@@ -1717,7 +1720,7 @@ static void draw_panel(const CoopModDraw *d, float x0, float y0, float x1, float
         d->rect(d->user, x, y1 - rim, next, y1, RGBA(24, 36, 110, a), 0);
         if (next > fx + 9 * s) {   /* (the inner window, deeper) */
             const float ix = x < fx + 9 * s ? fx + 9 * s : x;
-            d->rect(d->user, ix, fy + 9 * s, next, fy1, RGBA(30, 48, 104, (int)(140 * f)), 0);
+            d->rect(d->user, ix, fy + 9 * s, next, fy1, RGBA(30, 48, 104, (int)(INNER_ALPHA * f)), 0);
         }
     }
     d->rect(d->user, x0, y0 + cut, x0 + rim, y1 - rim, RGBA(150, 180, 250, PANEL_ALPHA + 20), 0);
