@@ -99,6 +99,9 @@ static volatile LONG need_reload;    /* the files moved at the title: the game r
 static volatile DWORD title_since;   /* when the title first took input after a pick (0: not yet; the game may load for
                                         longer than LIST_TRY_MS after a pick at the start) */
 static volatile DWORD list_ms, question_ms;   /* the load list's and its question's last updates (0: none yet) */
+static volatile DWORD title_ms;   /* the title's last update (it updates under the load list it opened) */
+static volatile LONG back_in;     /* the file select comes back over the load list B closes: from the left, at the
+                                     list's own pace (the title never shows between) */
 static volatile DWORD list_asked;
 static volatile DWORD handoff_ms;   /* a file picked over the title, its save list not shown yet: the file select stays (0: no) */
 #define HANDOFF_MAX_MS 3000         /* the file select stays this long at most for the game's save list */
@@ -1438,11 +1441,27 @@ static void on_screen(void *user, const CoopModScreen *sc) {
         return;
     }
     if (sc->kind == COOP_MOD_SCREEN_LOAD_LIST) {
+        static uint64_t list_pad;   /* (the buttons at the list's last update: a press is a new one) */
+        const uint64_t list_pressed = sc->buttons & ~list_pad;
+        list_pad = sc->buttons;
+        /* (the file select back over the list B closes: the list's last updates as it goes are not a list shown) */
+        if (state == ST_PICKING) return;
         list_ms = now;
         list_asked = 0;
+        /* B on the list over the title (the title updates under it; the in-game System page's list has no title),
+           taking input, no question over it: the list goes out as the game has it, and the file select comes in over
+           it at once, as the game's own screens cross, instead of after the title is back */
+        if ((list_pressed & PAD_B) && now - title_ms < 300 && sc->focused[0] && ready &&
+            (!question_ms || now - question_ms > 300)) {
+            back_in = 1;
+            open_over_title("B on the save list");
+            if (state != ST_PICKING) back_in = 0;
+            list_ms = 0;
+        }
         return;
     }
     if (sc->kind != COOP_MOD_SCREEN_TITLE) return;
+    title_ms = now ? now : 1;
     /* the sounds the file select asked for, on the title it is over (the game's own, as its screens start them) */
     if (api->version >= 3 && api->size >= offsetof(CoopModApi, play_sound) + sizeof api->play_sound && api->play_sound) {
         const LONG want = InterlockedExchange(&want_sounds, 0);
@@ -2023,6 +2042,7 @@ static void draw_picker(const CoopModDraw *d) {
    the overlay's: longshot_draw reads the overlay's own table) */
 #define FADE_IN_MS 300
 #define FADE_OUT_MS 220
+#define BACK_IN_MS 110   /* (back over the load list B closes: the list's own fade-out is about 100 ms) */
 #define SWIPE 0.18f   /* the swipe's length, in screen widths */
 typedef struct { const CoopModDraw *d; float a; } Fade;
 static uint32_t faded(uint32_t rgba, float a) { return (rgba & 0x00ffffffu) | (uint32_t)((float)(rgba >> 24) * a + 0.5f) << 24; }
@@ -2042,7 +2062,7 @@ static float fade_width(void *u, float px, const char *utf8) {
 
 static void overlay(void *user, const CoopModDraw *d) {
     (void)user;
-    static int was_picking;
+    static int was_picking, from_left;
     static DWORD shown_since, hidden_since;
     const DWORD now = GetTickCount();
     /* (after a pick over the title, still drawn until the game's save list shows: it then fades out over that list, and
@@ -2052,15 +2072,18 @@ static void overlay(void *user, const CoopModDraw *d) {
     const int holding = state != ST_PICKING && hand && !list_seen && now - hand < HANDOFF_MAX_MS;
     if (hand && !holding) handoff_ms = 0;
     const int picking = state == ST_PICKING || holding;
-    if (picking && !was_picking) shown_since = now;
+    if (picking && !was_picking) {
+        shown_since = now;
+        from_left = InterlockedExchange(&back_in, 0) != 0;   /* (back from the load list: the way the pick left) */
+    }
     if (!picking && was_picking) hidden_since = now ? now : 1;
     was_picking = picking;
     const int fading_out = !picking && hidden_since && now - hidden_since < FADE_OUT_MS;
     if (picking || fading_out) {
-        const float in = picking ? ease_out((float)(now - shown_since) / FADE_IN_MS) : 1.0f;
+        const float in = picking ? ease_out((float)(now - shown_since) / (from_left ? BACK_IN_MS : FADE_IN_MS)) : 1.0f;
         const float out = picking ? 0.0f : ease_out((float)(now - hidden_since) / FADE_OUT_MS);
         Fade f = {d, in * (1 - out)};
-        slide_dx = d->width * SWIPE * ((1 - in) + (closed_back ? out : -out));
+        slide_dx = d->width * SWIPE * ((from_left ? in - 1 : 1 - in) + (closed_back ? out : -out));
         CoopModDraw view = *d;
         view.user = &f, view.rect = fade_rect, view.text = fade_text, view.text_width = fade_width;
         ld = longshot_draw(d);
