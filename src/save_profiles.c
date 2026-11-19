@@ -604,10 +604,14 @@ static int erase_which;  /* 1..FILES: the file to erase */
 static int name_for;     /* 1..FILES: the file being named */
 static int name_then_load;   /* the name was asked for because the file was picked: load it when done */
 static char name_buf[NAME_MAX + 1];
-static int grid_r, grid_c;   /* the name keyboard's cursor (row 5: Space, Delete, End) */
+static int grid_r, grid_c;   /* the name keyboard's cursor (row 5: Space, Delete, Cancel, Save) */
 static const char *const grid_rows[5] = {"ABCDEFGHIJKLM", "NOPQRSTUVWXYZ", "abcdefghijklm", "nopqrstuvwxyz", "0123456789-.'"};
 #define GRID_COLS 13
-static const int action_col0[3] = {0, 4, 9}, action_col1[3] = {3, 8, 12};   /* Space, Delete, End */
+/* The keyboard's last row: Space, Delete, Cancel and Save, each over a few columns. ("End", the N64's word, read as
+   nothing to a player looking for how to keep the name: Save says it, and Cancel lets the mouse back out.) */
+#define ACTIONS 4
+enum { ACTION_SPACE, ACTION_DELETE, ACTION_CANCEL, ACTION_SAVE };
+static const int action_col0[ACTIONS] = {0, 3, 6, 9}, action_col1[ACTIONS] = {2, 5, 8, 12};
 static CRITICAL_SECTION input_lock;
 
 /* The mouse on the file select: where its items were drawn last (draw space), read on the frame's thread */
@@ -933,7 +937,11 @@ static void name_done(void) {
     }
 }
 
-static int action_of(int col) { return col <= action_col1[0] ? 0 : col <= action_col1[1] ? 1 : 2; }
+static int action_of(int col) {
+    for (int k = 0; k < ACTIONS - 1; k++)
+        if (col <= action_col1[k]) return k;
+    return ACTIONS - 1;
+}
 
 /* --- input ---------------------------------------------------------------------------------------------------- */
 
@@ -1122,13 +1130,14 @@ static void handle_name(LONG a) {
     if (a & ACT_DOWN) grid_r = (grid_r + 1) % 6;
     if (a & (ACT_LEFT | ACT_RIGHT)) {
         const int dir = (a & ACT_LEFT) ? -1 : 1;
-        if (grid_r == 5) grid_c = action_col0[(action_of(grid_c) + 3 + dir) % 3];
+        if (grid_r == 5) grid_c = action_col0[(action_of(grid_c) + ACTIONS + dir) % ACTIONS];
         else grid_c = (grid_c + GRID_COLS + dir) % GRID_COLS;
     }
     if (a & ACT_OK) {
         if (grid_r < 5) name_put(grid_rows[grid_r][grid_c]);
-        else if (action_of(grid_c) == 0) name_put(' ');
-        else if (action_of(grid_c) == 1) name_delete();
+        else if (action_of(grid_c) == ACTION_SPACE) name_put(' ');
+        else if (action_of(grid_c) == ACTION_DELETE) name_delete();
+        else if (action_of(grid_c) == ACTION_CANCEL) return name_cancel();
         else return name_done();
     }
     if (a & ACT_BACK) {   /* (B: delete a letter; with none left, back out) */
@@ -1244,7 +1253,7 @@ static void handle(LONG a) {
 static void pointed(LONG *a, int moved, int l_down, int r_down, float fx, float fy);
 
 /* The mouse over the game's window: the pointer moves the cursor onto an item, a left click chooses it, a right
-   click is B (as on the game's own menus). On the name screen the keys and its Space, Delete and End are items too;
+   click is B (as on the game's own menus). On the name screen the keys and its Space, Delete, Cancel and Save are items too;
    the page arrows turn the page. prime: only note the buttons (one held when the file select came up does not
    count). */
 static void mouse(LONG *a, int prime) {
@@ -1677,10 +1686,11 @@ static void draw_sky(const CoopModDraw *d, float t) {
     }
 }
 
-/* The N64 panel: a blue window with its top left corner cut, lighter low down, solid over the files and fading out to
-   the right over its last third. Its inner window (fx, fy: under the title, behind the buttons and plates) is a deeper
+/* The N64 panel: a blue window with its top left corner cut, lighter low down, nearly solid over the files (the night
+   sky's stars just show through it, as on the N64) and fading out to the right over its last third. Its inner window (fx, fy: under the title, behind the buttons and plates) is a deeper
    blue. Drawn in columns that meet edge to edge (never overlapping, or seams show); fine ones along the cut corner. */
 #define PANEL_BANDS 12
+#define PANEL_ALPHA 205   /* (of 255: 250 hid the stars, the first look's lighter one showed too many) */
 static void draw_panel(const CoopModDraw *d, float x0, float y0, float x1, float y1, float s, float fx, float fy, float fy1) {
     const float cut = 46 * s, rim = 4 * s, solid = 0.62f;
     for (float x = x0, next; x < x1; x = next) {
@@ -1691,7 +1701,7 @@ static void draw_panel(const CoopModDraw *d, float x0, float y0, float x1, float
         const float mid = (x + next) * 0.5f - x0, u = mid / (x1 - x0);
         float f = u < solid ? 1.0f : 1.0f - clamp01((u - solid) / (1.0f - solid));
         f = f * f * (3 - 2 * f);
-        const int a = (int)(250 * f);
+        const int a = (int)(PANEL_ALPHA * f);
         if (a < 3) break;
         const float top = y0 + (mid < cut ? cut - mid : 0);
         d->rect(d->user, x, top, next, top + rim, mix(128, 166, 240, 112, 150, 232, u, a), 0);
@@ -1710,7 +1720,7 @@ static void draw_panel(const CoopModDraw *d, float x0, float y0, float x1, float
             d->rect(d->user, ix, fy + 9 * s, next, fy1, RGBA(30, 48, 104, (int)(140 * f)), 0);
         }
     }
-    d->rect(d->user, x0, y0 + cut, x0 + rim, y1 - rim, RGBA(150, 180, 250, 250), 0);
+    d->rect(d->user, x0, y0 + cut, x0 + rim, y1 - rim, RGBA(150, 180, 250, PANEL_ALPHA + 20), 0);
 }
 
 /* lit: the cursor is on it (the light blue fill; only ever one). halo: an outline in that colour (0: none), for the
@@ -1831,9 +1841,9 @@ static void draw_naming(const CoopModDraw *d, float x0, float fy, float s, float
             text_engraved(d, cx0 + cell * 0.5f, cy0 + (cell - px) * 0.45f, px, r == grid_r && c == grid_c, ch);
             if (*hit_count < HITS_MAX) hit[(*hit_count)++] = (Hit){cx0, cy0, cx0 + cell, cy0 + cell, ITEM_KEY + r * GRID_COLS + c};
         }
-    static const char *const actions[3] = {"Space", "Delete", "End"};
+    static const char *const actions[ACTIONS] = {"Space", "Delete", "Cancel", "Save"};
     const float ay0 = gy0 + 5 * cell + 36 * s, ay1 = ay0 + 56 * s;
-    for (int k = 0; k < 3; k++) {
+    for (int k = 0; k < ACTIONS; k++) {
         const float ax0 = gx0 + action_col0[k] * cell + 4 * s, ax1 = gx0 + (action_col1[k] + 1) * cell - 4 * s;
         const int on = grid_r == 5 && action_of(grid_c) == k;
         draw_button(d, ax0, ay0, ax1, ay1, s, actions[k], on, on ? RGBA(120, 248, 255, 255) : 0, pulse, 0);

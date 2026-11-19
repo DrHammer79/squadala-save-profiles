@@ -92,7 +92,7 @@ Any kit whose co-op module loads code mods works (mod interface version 1 or lat
 | | Controller | Keyboard |
 |---|---|---|
 | Move on the letters | D-pad or left stick | arrows |
-| Type a letter with the mouse | click it (Space, Delete and End too) | |
+| Type a letter with the mouse | click it (Space, Delete, Cancel and Save too) | |
 | Type the letter | A | type it (Shift or Caps Lock for capitals) |
 | Space | Y, or Space on the screen | Space |
 | Delete a letter | B (with none left: back out) | Backspace |
