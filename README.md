@@ -2,9 +2,9 @@
 
 An N64-style file select with **7 files** for the Longshot game of
 [Squadala!](https://github.com/daurosk/oot-remake-multiplayer), the OoT co-op kit. Each file is its own game: its own
-saves, settings and progress. It shows when the game starts, before the title. Pick a file and the game opens that
-file's list of saves, as the game's own Continue does. B on that list brings the file select back, so you can switch
-files without a restart.
+saves, settings and progress. Choose Continue on the title and the file select comes in, as the game's own screens
+do. Pick a file and the game opens that file's list of saves. B on that list brings the file select back, and B in the
+file select goes back to the title, so you can switch files without a restart.
 
 ![The file select](screenshots/file-select-1080p.png)
 
@@ -18,14 +18,21 @@ mod interface. It is a community mod, not part of the kit.
 1. Download `save-profiles-<version>.zip` from [Releases](../../releases).
 2. Close the game. Unzip it into the game's `mods` folder, the one next to `longshot.exe`. In a kit that is
    `hookshot\game\mods`, so you end up with `hookshot\game\mods\save-profiles\mod.json`.
-3. Start the game: the file select comes up before the title.
+3. Start the game and choose Continue on the title: the file select comes up.
 
 To take it out, delete `mods\save-profiles`. The file you played last stays in the save folder, and the game keeps
 using it (see [Building from source](#building-from-source) for getting the other files back).
 
-Any kit whose co-op module loads code mods works (mod interface version 1 or later). The load list after a pick, and
-B on it back to the file select, need mod interface version 2 (co-op 0.11.6 and later). With version 1 the title
-comes up after a pick and the file select only shows when the game starts, as in Save Profiles 1.0.
+Any kit whose co-op module loads code mods works (mod interface version 1 or later).
+
+- **Mod interface version 2 (co-op 0.11.5 and later):** the file select opens from the title's Continue, a pick opens
+  the game's save list, and B on that list comes back to the file select.
+- **Its later entries (a co-op build with `play_sound` and `focused_ready`):** the game's own menu sounds (Continue's,
+  a cursor step, a choice), and the title's first A brings the title's menu in, as the game has it, instead of opening
+  the file select. Without them everything works the same, silently, and the first A on the title opens the file
+  select.
+- **Version 1:** the file select shows when the game starts, before the title, and the title comes up after a pick,
+  as in Save Profiles 1.0.
 
 ## Why updates don't break it
 
@@ -40,15 +47,16 @@ comes up after a pick and the file select only shows when the game starts, as in
 
 ## Using it
 
-| | Controller | Keyboard |
-|---|---|---|
-| Move | D-pad or left stick | Up / Down (W / S) |
-| Decide | A (or +) | Enter |
-| Cancel | B | Esc |
-| Load a file directly | | 1 to 7 |
+| | Controller | Keyboard | Mouse |
+|---|---|---|---|
+| Move | D-pad or left stick | Up / Down (W / S) | point at a file or button |
+| Decide | A (or +) | Enter | left click |
+| Back | B | Esc | right click |
+| Load a file directly | | 1 to 7 | |
 
 - **Pick a file** to play it. The game's list of that file's saves opens (its newest save and its autosaves), as if
-  you had chosen Continue on the title. **B** keeps the file you played last; the cursor always starts on it.
+  you had chosen Continue on the title. **B** goes back to the title and keeps the file you played last; the cursor
+  always starts on it.
 - **B on the game's save list** brings the file select back, over the title. Pick another file and the game reads
   that file's saves and opens its list; B in the file select goes back to the list of the file you had.
 - An empty file has no saves to list: the title comes up, and New Game starts it.
@@ -62,7 +70,8 @@ comes up after a pick and the file select only shows when the game starts, as in
   list, and its saves move to `profiles-backup\erased-file<N>-<date>`, so a mistake can be undone by hand.
 - **Name** asks which file, then opens the name screen (up to 12 letters).
 - **Mods tab:** in the game's menu (F1, or Home on a controller), go to Mods, then Save Profiles. "Skip the file
-  select" loads the last file without asking, from the next start on.
+  select" is for co-op without mod interface version 2, where the file select shows at the start: on, the game opens
+  the file you played last without asking. With version 2 the file select shows only when you choose Continue.
 - Each Nucleus Coop window only listens to its own controller (`LICHII_COOP_PAD` in its `coop-options.ini`). If
   that controller is not connected, every controller works, so the picker can never get stuck.
 
@@ -131,6 +140,20 @@ profiles-backup\overwritten-file<N>-<date>\   a file's saves from before a copy 
 
 ## How it works
 
+With mod interface version 2:
+
+1. The mod sees the game's menu screens. While the title's Continue is focused (and, with `focused_ready`, its menu
+   takes input), the mod keeps A and + from the game; your press opens the file select over the title instead, with
+   Continue's own sound, and the game gets no input while it shows.
+2. A pick moves the chosen file into the save folder (the game is idle at the title), has the game read its save list
+   again from the save folder, and has the game choose Continue (the game's own button choice, not a pressed button),
+   so the game's save list opens.
+3. While that list or its question is up, the title stays the game's. When the list closes with no save loaded and the
+   title takes input again, B took you back: the file select comes up again.
+4. The file select's sounds are the game's own (`play_sound`), started on the title it is drawn over.
+
+With version 1 (as in Save Profiles 1.0):
+
 1. Code mods start at the game's first frame. That is before the game's save thread (`gmd::SaveDataMgr`) reads
    anything; this was measured with Longshot's file trace (`HOS_FS_TRACE=1`).
 2. The mod pauses only that thread, while it is idle, and draws the file select over the game.
@@ -138,11 +161,6 @@ profiles-backup\overwritten-file<N>-<date>\   a file's saves from before a copy 
    as if it were the only one.
 4. If the game stops drawing while it waits for its saves, the mod lets the thread go after 4 seconds. The game
    then plays the file that is there, so it can never hang.
-5. With mod interface version 2 the mod sees the game's menu screens. After a pick it has the game choose the
-   title's Continue (the game's own button choice, not a pressed button), so the game's save list opens.
-6. When that list closes with no save loaded and the title takes input again, B took you back: the file select comes
-   up over the title, and the game gets no input while it shows. A pick there moves the files (the game is idle at
-   the title), has the game read its save list again from the save folder, and opens the new file's list.
 
 The log (`hookshot\game\logs\longshot_log.txt`) has every step on lines starting `coop: mod save-profiles:`.
 
@@ -157,8 +175,9 @@ The log (`hookshot\game\logs\longshot_log.txt`) has every step on lines starting
   - The file you played last stays in the save folder, and the game keeps using it.
   - To get another file back without the mod: close the game, move the contents of the save folder into an empty
     `perfil<N>`, then move the contents of the `perfil<N>` you want up into the save folder.
-- `src\coop_mod_api.h` is a copy of the co-op project's `hookshot/src/coop_mod_api.h` (version 2, unchanged). The
-  mod reads the version at its start and uses version 2's entries only when the co-op it runs on has them.
+- `src\coop_mod_api.h` is a copy of the co-op project's `hookshot/src/coop_mod_api.h` (version 2 with its later
+  entries, unchanged). The mod reads the version at its start and uses version 2's entries, and each later entry,
+  only when the co-op it runs on has them (the table's and the screen's `size`).
 
 ## The letters
 
