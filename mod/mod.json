@@ -1,9 +1,9 @@
 {
   "id": "save-profiles",
   "name": "Save Profiles",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "After juvxncio's zelda-oot-perfis (GPL-3.0-or-later)",
-  "description": "An N64-style file select with 7 files, opened by the title's Continue; a pick opens that file's save list, B on it comes back, and B goes back to the title. Each file is its own game: its own saves, settings and progress. In co-op the host shares the file it picked; guests play the host's save as before.",
+  "description": "An N64-style file select with 30 files on 5 pages, opened by the title's Continue; a pick opens that file's save list, B on it comes back, and B goes back to the title. Each file is its own game: its own saves, settings and progress. Export and Import copy a file to and from Documents\\Squadala saves. In co-op the host shares the file it picked; guests play the host's save as before.",
   "coop": "own",
   "api": 1,
   "code": "save_profiles.dll",

@@ -1,6 +1,6 @@
 # Save Profiles
 
-An N64-style file select with **7 files** for the Longshot game of
+An N64-style file select with **30 files** (5 pages of 6) for the Longshot game of
 [Squadala!](https://github.com/daurosk/oot-remake-multiplayer), the OoT co-op kit. Each file is its own game: its own
 saves, settings and progress. Choose Continue on the title and the file select comes in, as the game's own screens
 do. Pick a file and the game opens that file's list of saves. B on that list brings the file select back, and B in the
@@ -49,10 +49,11 @@ Any kit whose co-op module loads code mods works (mod interface version 1 or lat
 
 | | Controller | Keyboard | Mouse |
 |---|---|---|---|
-| Move | D-pad or left stick | Up / Down (W / S) | point at a file or button |
+| Move | D-pad or left stick | arrows (W A S D) | point at a file or button |
 | Decide | A (or +) | Enter | left click |
 | Back | B | Esc | right click |
-| Load a file directly | | 1 to 7 | |
+| Next or last page | L / R (or left / right on a file) | Page Up / Page Down (or left / right) | the arrows by "1 / 5" |
+| Load a file directly | | 1 to 6 (the page shown) | |
 
 - **Pick a file** to play it. The game's list of that file's saves opens (its newest save and its autosaves), as if
   you had chosen Continue on the title. **B** goes back to the title and keeps the file you played last; the cursor
@@ -69,6 +70,17 @@ Any kit whose co-op module loads code mods works (mod interface version 1 or lat
 - **Erase** asks which file, then "Are you sure?" with Quit preselected. The file and its name are gone from the
   list, and its saves move to `profiles-backup\erased-file<N>-<date>`, so a mistake can be undone by hand.
 - **Name** asks which file, then opens the name screen (up to 12 letters).
+- **Export** asks which file, then copies it into a new folder of its own in `Documents\Squadala saves`
+  (`File <N> - <name> - <date>`): its saves and settings, and a note with its name. The file itself does not change.
+  Send that folder to a friend, or keep it as a backup.
+- **Import** lists the exported files in `Documents\Squadala saves` (newest first; put a friend's folder there), asks
+  which one, then which file to put it in (the first empty file is offered first).
+  - Into an empty file it imports straight away, with the name.
+  - Into a file that has saves it asks "Overwrite File N?" with Quit preselected. On Yes, that file's old saves move
+    to `profiles-backup\overwritten-file<N>-<date>` first.
+- **Pages:** the files show 6 at a time, a small gap after the third, on 5 pages. L and R (Page Up and Page Down, or
+  left and right on a file, or a click on the arrows beside "1 / 5" under the list) turn the page. The file select
+  opens on the page of the file you played last.
 - **Mods tab:** in the game's menu (F1, or Home on a controller), go to Mods, then Save Profiles. "Skip the file
   select" is for co-op without mod interface version 2, where the file select shows at the start: on, the game opens
   the file you played last without asking. With version 2 the file select shows only when you choose Continue.
@@ -80,6 +92,7 @@ Any kit whose co-op module loads code mods works (mod interface version 1 or lat
 | | Controller | Keyboard |
 |---|---|---|
 | Move on the letters | D-pad or left stick | arrows |
+| Type a letter with the mouse | click it (Space, Delete and End too) | |
 | Type the letter | A | type it (Shift or Caps Lock for capitals) |
 | Space | Y, or Space on the screen | Space |
 | Delete a letter | B (with none left: back out) | Backspace |
@@ -125,16 +138,16 @@ The game's save folder is `hookshot\game\user\save\5a3c9e1f0b7d24680000000000000
 
 ```
 account.sav, option.sav, slot_00 ... slot_05   the file you are playing, as without this mod
-perfil1\ ... perfil7\                         the other files, parked (only the ones that hold something)
+perfil1\ ... perfil30\                        the other files, parked (only the ones that hold something)
 profiles.txt                                  which file is in the save folder now (active=N), the names (name<N>=)
 profiles-backup\<date>\                       the save folder as it was before the first switch ever
 profiles-backup\erased-file<N>-<date>\        erased files
 profiles-backup\overwritten-file<N>-<date>\   a file's saves from before a copy over it
 ```
 
-- **Coming from the emulator mod:** copy the emulator's save folder here, including its `perfil2` ... `perfil7`
+- **Coming from the emulator mod:** copy the emulator's save folder here, including its `perfil2` ... `perfil9`
   folders. With no `profiles.txt`, the top of the folder counts as File 1, the same as zelda-oot-perfis does. Only
-  Files 1 to 7 are offered.
+  Files 1 to 30 are offered.
 - **Interrupted switches:** a switch writes `moving=A>B` into `profiles.txt` first. If the game closed in the middle,
   the next start finishes it.
 
