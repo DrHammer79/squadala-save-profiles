@@ -27,7 +27,7 @@ Any kit whose co-op module loads code mods works (mod interface version 1 or lat
 
 - **Mod interface version 2 (co-op 0.11.5 and later):** the file select opens from the title's Continue, a pick opens
   the game's save list, and B on that list comes back to the file select.
-- **Its later entries (a co-op build with `play_sound` and `focused_ready`):** the game's own menu sounds (Continue's,
+- **Mod interface version 3 (`play_sound` and `focused_ready`, a co-op build after 0.11.5):** the game's own menu sounds (Continue's,
   a cursor step, a choice), and the title's first A brings the title's menu in, as the game has it, instead of opening
   the file select. Without them everything works the same, silently, and the first A on the title opens the file
   select.
@@ -175,9 +175,8 @@ The log (`hookshot\game\logs\longshot_log.txt`) has every step on lines starting
   - The file you played last stays in the save folder, and the game keeps using it.
   - To get another file back without the mod: close the game, move the contents of the save folder into an empty
     `perfil<N>`, then move the contents of the `perfil<N>` you want up into the save folder.
-- `src\coop_mod_api.h` is a copy of the co-op project's `hookshot/src/coop_mod_api.h` (version 2 with its later
-  entries, unchanged). The mod reads the version at its start and uses version 2's entries, and each later entry,
-  only when the co-op it runs on has them (the table's and the screen's `size`).
+- `src\coop_mod_api.h` is a copy of the co-op project's `hookshot/src/coop_mod_api.h` (version 3, unchanged). The mod reads the version at its start and uses version 2's and 3's entries only when the
+  co-op it runs on has them (its `version`, and the table's and the screen's `size`).
 
 ## The letters
 

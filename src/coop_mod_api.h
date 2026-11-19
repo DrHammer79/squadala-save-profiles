@@ -22,13 +22,16 @@
    - Version 1: the log, memory, settings, frame, overlay, key, setting and hook callbacks.
    - Version 2: the game's menu screens (on_screen) and three things a mod may do inside that call: choose the focused
      button, have the game read its save list again, hold the game's input. They are said in the game's own terms
-     (screens, buttons, the save list), never as addresses: the runtime finds the game's functions itself. */
+     (screens, buttons, the save list), never as addresses: the runtime finds the game's functions itself.
+   - Version 3: inside on_screen, start one of the game's own menu sounds (play_sound); and the screen says whether its
+     focused button takes a choice now (CoopModScreen's focused_ready). A mod that uses either says "api": 3, so an
+     older co-op refuses it cleanly instead of it reading past that co-op's table. */
 #ifndef COOP_MOD_API_H
 #define COOP_MOD_API_H
 #include <stddef.h>
 #include <stdint.h>
 
-#define COOP_MOD_API_VERSION 2u
+#define COOP_MOD_API_VERSION 3u
 
 #ifdef _WIN32
 #define COOP_MOD_EXPORT __declspec(dllexport)
@@ -79,10 +82,10 @@ typedef struct CoopModScreen {
     uint64_t buttons;       /* player 1's buttons now (Switch NpadButton bits: A 1<<0, B 1<<1, X 1<<2, Y 1<<3, + 1<<10,
                                - 1<<11, the d-pad 1<<12 to 1<<15), as the game would get them before any mod's hold: a
                                pad, the keyboard's bindings and a click on the game's menus alike */
-    int focused_ready;      /* 1 when the focused button takes a choice now: its screen is open and not still coming in
-                               (the title has Continue focused while its opening scene plays and its menu fades in:
-                               0 then, and the game's own A goes to the title, not to Continue). Read it only when
-                               size covers it. */
+    int focused_ready;      /* (version 3) 1 when the focused button takes a choice now: its screen is open and not
+                               still coming in (the title has Continue focused while its opening scene plays and its
+                               menu fades in: 0 then, and the game's own A goes to the title, not to Continue). Read it
+                               only when the table's version is 3 or more (or this struct's size covers it). */
 } CoopModScreen;
 /* (version 2) hold_input's buttons: all of them and the sticks too */
 #define COOP_MOD_HOLD_ALL (~(uint64_t)0)
@@ -138,25 +141,31 @@ typedef struct CoopModApi {
 
     /* Chooses the screen's focused button the game's own way, as the player's A would (its press, its sound, what it
        opens). 1 when the game took it; 0 when nothing is focused, the button cannot be chosen now (its opening animation,
-       another choice running: try at a later update), or co-op is busy at the title (hosting, joining, the host's save
-       on its way). */
+       another choice running: try at a later update), or co-op is busy: hosting, joining, in a session or the host's
+       save on its way (on every screen, not only the title). */
     int (*choose_focused)(const struct CoopModApi *self);
 
     /* Has the game read its save list (the files' captions the title and the load list show) again from the save
        folder, after the mod changed the files in it. The game reads it at the title's next update; save_list_ready is 0
-       until it is done. 1 when asked. */
+       until it is done. 1 when asked; 0 when the title is not up (the game reads its list only there: on the pause
+       menu's System > Load, ask again once the title shows). */
     int (*reload_save_list)(const struct CoopModApi *self);
 
     /* The buttons the game does not get from player 1 while held (NpadButton bits, as CoopModScreen's `buttons`):
        COOP_MOD_HOLD_ALL for all of them and the sticks (the mod's own screen is in front), a few to take one choice
        (A on a focused button: the mod sees the press in `buttons` and acts itself), 0 to give everything back. Each call
-       replaces this mod's last; the mods' holds add up. The hold ends by itself when no menu screen has updated for half
-       a second, and when the mod is switched off. 1 when done. */
+       replaces this mod's last and ties it to the screen it is made on; the mods' holds add up. The hold ends by itself
+       when that screen has not updated for half a second (it closed; other screens such as the HUD do not keep it) or
+       updates as another kind of screen, and when the mod is switched off. A mod keeps a hold across screens by
+       calling hold_input again on the next one. 1 when done. */
     int (*hold_input)(const struct CoopModApi *self, uint64_t buttons);
-    /* (version 2) One of the game's own menu sounds, on the screen being updated, as the game's screens start theirs:
-       `name` is a sound of that screen's set ("button_on" a cursor step, "button_decide" a choice, "Pa_Button_00_decide"
-       the title's Continue, "mc_TabToRight" the pause menu's tabs), letters, digits and _ only, at most 63. Only inside
-       on_screen; 1 when the game found the sound and started it. Read it only when size covers it. */
+
+    /* ---- Version 3: read `version` >= 3 (or `size`) before using these. ---- */
+
+    /* One of the game's own menu sounds, on the screen being updated, as the game's screens start theirs: `name` is a
+       sound of that screen's set ("button_on" a cursor step, "button_decide" a choice, "Pa_Button_00_decide" the
+       title's Continue, "mc_TabToRight" the pause menu's tabs), letters, digits and _ only, at most 63. Only inside
+       on_screen, as the version 2 calls; 1 when the game found the sound and started it. */
     int (*play_sound)(const struct CoopModApi *self, const char *name);
 } CoopModApi;
 

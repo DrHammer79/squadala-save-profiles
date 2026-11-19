@@ -1097,8 +1097,8 @@ static int back_from_list(DWORD now) {
 static void on_screen(void *user, const CoopModScreen *sc) {
     (void)user;
     const DWORD now = GetTickCount();
-    /* (the focused button takes a choice now: interface 2's later field, 1 from a runtime without it) */
-    const int ready = sc->size >= offsetof(CoopModScreen, focused_ready) + sizeof sc->focused_ready ? sc->focused_ready : 1;
+    /* (the focused button takes a choice now: interface 3's field, 1 from a runtime without it) */
+    const int ready = api->version >= 3 && sc->size >= offsetof(CoopModScreen, focused_ready) + sizeof sc->focused_ready ? sc->focused_ready : 1;
     if (debug_screens && sc->kind < 4) {   /* (SAVE_PROFILES_DEBUG=1: each change of what a kind of screen says, once) */
         static char last[4][96];
         char now_says[96];
@@ -1120,7 +1120,7 @@ static void on_screen(void *user, const CoopModScreen *sc) {
     }
     if (sc->kind != COOP_MOD_SCREEN_TITLE) return;
     /* the sounds the file select asked for, on the title it is over (the game's own, as its screens start them) */
-    if (api->size >= offsetof(CoopModApi, play_sound) + sizeof api->play_sound && api->play_sound) {
+    if (api->version >= 3 && api->size >= offsetof(CoopModApi, play_sound) + sizeof api->play_sound && api->play_sound) {
         const LONG want = InterlockedExchange(&want_sounds, 0);
         if (want & SND_CONTINUE) api->play_sound(api, "Pa_Button_00_decide");
         if (want & (SND_CONTINUE | SND_DECIDE)) api->play_sound(api, "button_decide");
