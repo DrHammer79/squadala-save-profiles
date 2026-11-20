@@ -7,6 +7,7 @@
   "coop": "own",
   "api": 1,
   "code": "save_profiles.dll",
+  "file_select": true,
   "settings": [
     {"key": "skip", "name": "Skip the file select", "type": "toggle", "restart": true,
      "help": "Only for co-op before mod interface 2, where the file select shows at the start. On: the game opens the file you played last. Off (the default): pick a file each time. With interface 2 the title's Continue opens it."}
